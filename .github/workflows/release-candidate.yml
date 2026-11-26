@@ -1,0 +1,54 @@
+name: Build a verified pida release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing annotated release tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  distribution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PIDA_RELEASE_TAG: ${{ inputs.version }}
+    steps:
+      - name: Check the exact-tag input
+        run: |
+          [[ "$PIDA_RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.version }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify the annotated tag and package version
+        run: |
+          ref="refs/tags/$PIDA_RELEASE_TAG"
+          test "$(git cat-file -t "$ref")" = tag
+          test "$(git rev-parse "$ref^{commit}")" = "$(git rev-parse HEAD)"
+          test "v$(node -p 'require("./package.json").version')" = "$PIDA_RELEASE_TAG"
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: Pack and verify the installed tarball
+        run: |
+          mkdir -p release-candidate
+          npm pack --pack-destination release-candidate
+          name="pida-core-${PIDA_RELEASE_TAG#v}.tgz"
+          node scripts/install-check.mjs npm "release-candidate/$name"
+          cd release-candidate
+          sha256sum "$name" > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pida-release-candidate
+          path: |
+            release-candidate/pida-core-*.tgz
+            release-candidate/SHA256SUMS.txt
+          if-no-files-found: error
