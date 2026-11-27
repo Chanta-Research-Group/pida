@@ -2,7 +2,7 @@ import { readRepositoryProfile } from './repository-profile.mjs';
 // Trusted parent-process entrypoint. The ready line is a private credential transport, NOT a log.
 import { mkdir, readdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync, lstatSync } from 'node:fs';
-import { resolve, join, isAbsolute } from 'node:path';
+import { resolve, join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
@@ -76,21 +76,9 @@ try {
   }
   // Paths only from trusted parent configuration; unknown parent-private locations are checked by that parent.
   const pix = managedPixConfiguration();
-  const protectedPaths = [args['provider-workspace'], args['persona-module'], process.env.PIDA_PERSONA_BRIDGE_CONFIG, process.env.PIDA_PERSONA_BRIDGE_STORE, process.env.PIDA_PERSONA_BRIDGE_EXECUTABLE, process.env.PIDA_PERSONA_CATALOGUE].filter(Boolean);
+  const protectedPaths = [args['provider-workspace'], args['persona-module'],
+    process.env.PIDA_PERSONA_CATALOGUE, process.env.PIDA_PERSONA_SUBSTRATE_PYTHON].filter(Boolean);
   if (pix) protectedPaths.push(pix.pythonExecutable, pix.sourceDirectory);
-  if (repositoryMode) {
-    const bridgePrefixes = JSON.parse(process.env.PIDA_PERSONA_BRIDGE_PREFIX_ARGS ?? '[]');
-    if (Array.isArray(bridgePrefixes)) protectedPaths.push(...bridgePrefixes.filter(p => typeof p === 'string' && isAbsolute(p)));
-    if (process.env.PIDA_PERSONA_CATALOGUE) {
-      const bytes = await readFile(process.env.PIDA_PERSONA_CATALOGUE);
-      if (bytes.length > 262144) throw Error('HOST_PERSONA_CATALOGUE_INVALID');
-      const catalogue = JSON.parse(bytes);
-      for (const source of catalogue.sources ?? []) {
-        if (Array.isArray(source.bridge?.prefix_args)) protectedPaths.push(...source.bridge.prefix_args.filter(p => typeof p === 'string' && isAbsolute(p)));
-        for (const key of ['config','store','executable']) if (typeof source.bridge?.[key] === 'string') protectedPaths.push(source.bridge[key]);
-      }
-    }
-  }
   const repositoryOptions = { hostId, executionPolicyId: executionPolicy.id, workspaceDirectory: directory,
     runtimeDirectory: fileURLToPath(new URL('../', import.meta.url)), protectedPaths };
   const repository = repositoryMode ? readRepositoryProfile(repositoryOptions) : null;
